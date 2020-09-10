@@ -2,9 +2,6 @@
 #include "Point.h"
 #include "Strategy.h"
 #include "UCT.h"
-#include <conio.h>
-#include <atlstr.h>
-#include <time.h>
 
 using namespace std;
 
@@ -42,21 +39,22 @@ extern "C" __declspec(dllexport) Point* getPoint(const int M, const int N, const
 			board[i][j] = _board[i * N + j];
 		}
 	}
+	
 	/*
 		根据你自己的策略来返回落子点,也就是根据你的策略完成对x,y的赋值
 		该部分对参数使用没有限制，为了方便实现，你可以定义自己新的类、.h文件、.cpp文件
 	*/
 	//Add your own code below
-	
+	/*
      //a naive example
-	//for (int i = N-1; i >= 0; i--) {
-	//	if (top[i] > 0) {
-	//		x = top[i] - 1;
-	//		y = i;
-	//		break;
-	//	}
-	//}
-
+	for (int i = N-1; i >= 0; i--) {
+		if (top[i] > 0) {
+			x = top[i] - 1;
+			y = i;
+			break;
+		}
+	}
+    */
 	//判断是否是新一局游戏
 	int steps = 0;
 	int newgameflag = 0;
@@ -71,9 +69,10 @@ extern "C" __declspec(dllexport) Point* getPoint(const int M, const int N, const
 	}
 	//long starttime = long(clock());
 	UCT* pUct = UCT::getInstance(board,top,M,N,HUMAN_NODE,lastX,lastY,noX,noY,newgameflag);
-	pUct->getnextPoint(x,y);
-	//_cprintf("it takes time:%ld\n",long(clock()) - starttime);
-
+	Point p = pUct->best_action();
+	x = p.x;
+	y = p.y;
+	
 	/*
 		不要更改这段代码
 	*/

@@ -10,32 +10,30 @@
 UCT* UCT::pUctSingle = nullptr;
 
 StateNode::StateNode(int **board, const int *top, 
-		int M, int N, int whoseNode, 
-		int x, int y, StateNode* parent, int nox, int noy)
+					 int M, int N, int whoseNode, 
+					 int x, int y, StateNode* parent, int nox, int noy):
+M(M),N(N),x(x),y(y),nox(nox),noy(noy),whoseNode(whoseNode),parent(parent)
 {
-	this->M = M;
-	this->N = N;
+	//_cprintf("in_statenode\n");
 	int** _board = new int*[M];
+	int* _board_1 = new int [M * N];
 	for(int i = 0; i < M; i++){
-		_board[i] = new int[N];
+		_board[i] = _board_1 + N * i;
+		//_board[i] = new int [N];
 		for(int j = 0; j < N; j++){
 			_board[i][j] = board[i][j];
 		}
 	}
+	//_cprintf("finish_board\n");
 	this->board = _board;
 	int* _top = new int[N];
 	for(int i = 0; i < N; i++){
 		_top[i] = top[i];
 	}
 	this->top = _top;
-	this->x = x;
-	this->y = y;
-	this->nox = nox;
-	this->noy = noy;
-	this->whoseNode = whoseNode;
-	this->parent = parent;
 	this->profit = 0;
 	this->visitCount = 0;
+	this->sub_node_cnt = 0;
 
 	this->expandIndex = new int[N];
 	this->canExpandNUms = 0;
@@ -46,28 +44,26 @@ StateNode::StateNode(int **board, const int *top,
 			this->expandIndex[this->canExpandNUms++] = i;
 		}
 	}
-	checkState();
+	this->nodestate = checkState();
 }
 
 int StateNode::checkState()
 {
-	if(x == -1 && y == -1){
-		this->nodestate = NOTEND;
+	if(this->x == -1 && this->y == -1){
 		return NOTEND;
 	}
-	if ((whoseNode == COMPUTER_NODE && machineWin(x, y, this->M, this->N, board))){
-		this->nodestate = COMPUTER_WIN;
+	if ((whoseNode == COMPUTER_NODE && machineWin(this->x, this->y, this->M, this->N, this->board))){
+		this->profit = 1e10;
 		return COMPUTER_WIN;
 	}
-	if((whoseNode == HUMAN_NODE && userWin(x, y, this->M, this->N, board))){
-		this->nodestate = HUMAN_WIN;
+	if((whoseNode == HUMAN_NODE && userWin(this->x, this->y, this->M, this->N, this->board))){
+		this->profit = 1e10;
 		return HUMAN_WIN;
 	}
-	if((isTie(this->N, top))){
-		this->nodestate = TIE;
+	if((isTie(this->N, this->top))){
+		this->profit = 0;
 		return TIE;
 	}
-	this->nodestate = NOTEND;
 	return NOTEND;
 }
 
@@ -77,116 +73,322 @@ bool StateNode::isExpandable()
 }
 void StateNode::clear()
 {
-	for (int i = 0; i < this->M; i++)
-			delete [] this->board[i];
+	delete [] this->board[0];
+	//for(int i = 0; i<this->M; i++)
+	//delete [] this->board[i];
 	delete [] this->board;
 	delete [] this->top;
 	delete [] this->expandIndex;
-	for (int i = 0; i < this->N; i ++)
+	for (int i = 0; i < this->N; i ++){
 		if (this->child[i]) {
 			this->child[i] -> clear();
 			delete this->child[i];
 		}
+	}
 	delete [] this->child;
 }
 
-StateNode* StateNode::deleteOtherBranches(int x, int y){
-	//_cprintf("in deletebranches\n");
-	StateNode* retNode = this->child[y];
-	for (int i = 0; i < this->N; i ++){
-		if (this->child[i]) {
-			if( y != i){
-				this->child[i] -> clear();
-				delete this->child[i];
-			}
-		}
-	}
-	if(retNode == nullptr){
-		this->x = x;
-		this->y = y;
-		this->whoseNode ^= 1;
-		this->profit = 0;
-		this->visitCount = 0;
-		this->canExpandNUms = 0;
-		//_cprintf("in changeboard\n");
-		if(this->whoseNode == HUMAN_NODE){
-			this->board[x][y] = HUMAN_PUT;
-		}else{
-			this->board[x][y] = COMPUTER_PUT;
-		}
-		//_cprintf("out changeboard\n");
-		this->top[y]--;
-		if((this->top[y]-1) == this->nox)
-			this->top[y]--;
-		for(int i = 0; i < N; i++){
-			this->child[i] = nullptr;
-			if(this->top[i] != 0){
-				this->expandIndex[this->canExpandNUms++] = i;
-			}
-		}
-		checkState();
-		retNode = this;
+StateNode* StateNode::expand(){
+	int idx = rand() % this->canExpandNUms;
+	int expand_y = this->expandIndex[idx];
+	int expand_x = -- this->top[expand_y];
+	int next_whose_node;
+	if(this->whoseNode == COMPUTER_NODE){
+		this->board[expand_x][expand_y] = HUMAN_PUT;
+		next_whose_node = HUMAN_NODE;
 	}else{
-		for (int i = 0; i < this->M; i++)
-			delete [] this->board[i];
-		delete [] this->board;
-		delete [] this->top;
-		delete [] this->expandIndex;
-		delete [] this->child;
+		this->board[expand_x][expand_y] = COMPUTER_PUT;
+		next_whose_node = COMPUTER_NODE;
 	}
-	//_cprintf("out delete branches\n");
-	return retNode;
+	if(expand_y == this->noy && (this->top[expand_y] - 1) == this->nox){
+		this->top[expand_y]--;
+	}
+	this->child[expand_y] = new StateNode(this->board,this->top,this->M,this->N,next_whose_node,expand_x,expand_y,this,this->nox,this->noy);
+	this->top[expand_y] = expand_x+1;
+	this->board[expand_x][expand_y] = 0;
+	this->expandIndex[idx] = this->expandIndex[--this->canExpandNUms];
+	return this->child[expand_y];
+}
+void StateNode::backward(double deltaProfit){
+	this->visitCount += 1;
+	this->profit += deltaProfit;
+	if(this->parent != nullptr){
+		this->parent->backward(-deltaProfit);
+	}
+}
+void StateNode::check_prune(){
+	if(this->nodestate == NOTEND){
+		for(int i = 0; i< this->N; i++){
+			if(this->child[i] != nullptr){
+				int who_win = this->child[i]->get_node_state();
+				if(who_win * this->get_whose_node() == -1){
+					this->nodestate = who_win;
+					this->profit = -1e10;
+					if(this->parent){
+						this->parent->check_prune();
+					}
+					break;
+				}
+			}
+		}
+	}
+	if(!this->isExpandable()){
+		int flag = 0;
+		for(int i = 0; i< this->N; i++){
+			if(this->child[i] != nullptr){
+				int who_win = this->child[i]->get_node_state();
+				if(who_win * this->get_whose_node() != 1){
+					flag = 1;
+					break;
+				}
+			}
+		}
+		if(flag == 0){
+			this->nodestate = this->get_whose_node();
+			this->profit = 1e10;
+			if(this->parent){
+				this->parent->check_prune();
+			}
+		}
+	}
+}
+bool StateNode::is_terminal_node(){
+	return this->nodestate != NOTEND;
+}
+Point StateNode::get_point(){
+	return Point(this->x,this->y);
+}
+long StateNode::get_visits_cnt(){
+	return this->visitCount;
+}
+double StateNode::get_profit(){
+	return this->profit;
+}
+int StateNode::get_whose_node(){
+	return this->whoseNode;
+}
+int StateNode::get_node_state(){
+	return this->nodestate;
+}
+StateNode* StateNode::get_child(int idx){
+	if(idx < 0 || idx >= this->N){
+		return nullptr;
+	}else{
+		return this->child[idx];
+	}
+}
+void StateNode::set_child(int idx, StateNode* node){
+	if(idx >= 0 && idx < this->N){
+		this->child[idx] = nullptr;
+	}
+}
+StateNode* StateNode::get_parent(){
+	return this->parent;
+}
+void StateNode::set_parent(StateNode* node){
+	this->parent = nullptr;
+}
+StateNode* StateNode::best_child(double cofficient){
+	StateNode* best;
+	double maxUCBValue = -1e200;
+	StateNode **cand = new StateNode*[this->N];
+	int cand_cnt = 0;
+	for (int i = 0; i != this->N; i++) {
+		if (this->child[i] == nullptr) continue;
+		long childvisitCnt = this->child[i]->get_visits_cnt();
+		double profit = this->child[i]->get_profit();
+		double ucbvalue = double(profit) / childvisitCnt + 
+			sqrtl(2 * logl(double(this->visitCount)) / childvisitCnt) * cofficient; 
+		if (ucbvalue > maxUCBValue) {
+			maxUCBValue = ucbvalue;
+			cand_cnt = 1;
+			cand[0] = this->child[i];
+		}else if (abs(ucbvalue - maxUCBValue) < 1e-20){
+			//_cprintf("i came here");
+			cand[cand_cnt++] = this->child[i];
+		}
+	}
+	best = cand[rand()%cand_cnt];
+	delete cand;
+	//_cprintf("outbestchild\n");
+	return best;
+}
+double StateNode::simulate(){
+	//_cprintf("in_simulate\n");
+	int* avail_y = new int[this->N];
+	int avail_y_cnt = 0;
+	for( int i = 0; i < this->N; i++){
+		if(this->top[i] != 0){
+			avail_y[avail_y_cnt++] = i;
+		}
+	}
+	while(this->nodestate == NOTEND){
+		//this->nodestate = this->check_son_state(avail_y,avail_y_cnt);
+		//if(this->nodestate != NOTEND){
+		//	break; 
+		//}
+		int idx = rand()%avail_y_cnt;
+		int next_y = avail_y[idx];
+		int next_x = --this->top[next_y];
+		if(this->whoseNode == COMPUTER_NODE){
+			this->board[next_x][next_y] = HUMAN_PUT;
+			this->whoseNode = HUMAN_NODE;
+		}else{
+			this->board[next_x][next_y] = COMPUTER_PUT;
+			this->whoseNode = COMPUTER_NODE;
+		}
+		if(next_y == this->noy && (this->top[next_y] - 1) == this->nox){
+			this->top[next_y]--;
+		}
+		if(this->top[next_y] == 0){
+			avail_y[idx] = avail_y[--avail_y_cnt];
+		}
+		this->x = next_x;
+		this->y = next_y;
+		this->nodestate = this->checkState();
+	}
+	delete[] avail_y;
+	//_cprintf("out_simulate\n");
+	return this->nodestate;
+}
+
+StateNode* StateNode::copy(){
+	//_cprintf("in_copy\n");
+	StateNode* cp = new StateNode(this->board,this->top,this->M,this->N,this->whoseNode,this->x,this->y,nullptr,this->nox,this->noy);
+	//_cprintf("out_copy\n");
+	return cp;
+}
+void StateNode::print_profit(){
+	for(int i = 0; i < this->N; i++){
+		if(this->child[i] != nullptr){
+			_cprintf("child %d,state:%d, profit:%f,count:%ld,%f\n",i,this->child[i]->nodestate,this->child[i]->profit,this->child[i]->visitCount,
+				this->child[i]->profit/this->child[i]->visitCount);
+		}
+	}
+	_cprintf("\n");
+}
+void StateNode::print_board(){
+	_cprintf("board\n");
+	for(int i = 0; i < this->M; i++){
+		for(int j = 0; j < this->N; j++){
+			if(i == this->nox && j == this->noy){
+				_cprintf("X ");
+			}else if(this->board[i][j] == HUMAN_PUT){
+				_cprintf("H ");
+			}else if(this->board[i][j] == COMPUTER_PUT){
+				_cprintf("M ");
+			}else{
+				_cprintf(". ");
+			}
+		}
+		_cprintf("\n");
+	}
+	_cprintf("\n");
+}
+
+long StateNode::dfs(){
+	long cnt = 0;
+	//this->print_profit();
+	for(int i = 0; i < this->N; i++){
+		if(this->child[i]){
+			//_cprintf("child_%d\n", i);
+			//this->print_board();
+			cnt += 1;
+		}
+	}
+	if(this->nodestate != NOTEND){
+		return cnt;
+	}
+	for(int i = 0; i < this->N; i++){
+		if(this->child[i]){
+			//_cprintf("dfs\n");
+			cnt += this->child[i]->dfs();
+		}
+	}
+	this->sub_node_cnt = cnt;
+	return cnt;
+}
+int StateNode::check_son_state(int* avail_y, int avail_y_cnt){
+	int flag = 0;
+	int back_x = this->x;
+	int back_y = this->y;
+	int ret = 0;
+	this->whoseNode *= -1;
+	for(int i=0; i < avail_y_cnt; i++){
+		int next_y = avail_y[i];
+		int next_x = --this->top[next_y];
+		if(this->whoseNode ==HUMAN_NODE){
+			this->board[next_x][next_y] = HUMAN_PUT;
+		}else{
+			this->board[next_x][next_y] = COMPUTER_PUT;
+		}
+		if(next_y == this->noy && (this->top[next_y] - 1) == this->nox){
+			this->top[next_y]--;
+		}
+		this->x = next_x;
+		this->y = next_y;
+		this->nodestate = this->checkState();
+		if(this->nodestate != NOTEND){
+			flag = 1;
+			ret = this->nodestate;
+		}
+		this->board[next_x][next_y] = 0;
+		this->top[next_y] = next_x + 1;
+		if(flag == 1){
+			break;
+		}
+	}
+	this->x = back_x;
+	this->y = back_y;
+	this->whoseNode *= -1;
+	if(flag==1){
+		return ret;
+	}else{
+		return NOTEND;
+	}
 }
 
 
 
 UCT::UCT(int **board, const int *top, 
-		int M, int N, int whoseNode, 
-		int x, int y, int nox, int noy)
+		 int M, int N, int whoseNode, 
+		 int x, int y, int nox, int noy)
 {
 	this->root = new StateNode(board, top, M, N, whoseNode, x, y, nullptr, nox, noy);
-	this->M = M;
-	this->N = N;
-	if(x == -1 && y == -1)
-		this->depth = 0;
-	else
-		this->depth = 1;
-	this->nox = nox; 
-	this->noy = noy;
-	srand(unsigned int(clock()));
-	//this->c = COEFFICIENT;
+	//this->seed = 0;
+	this->c = COEFFICIENT;
 }
 
 UCT* UCT::getInstance(int **board, const int *top, 
-		int M, int N, int whoseNode, 
-		int x, int y, int nox, int noy, int newgameflag){
-			if (nullptr == UCT::pUctSingle)
-			{
-				//AllocConsole();
-				UCT::pUctSingle = new UCT(board, top, M, N, whoseNode, x, y, nox, noy);
-				UCT::pUctSingle->starttime = long(clock());
-				
-			}else{
-				UCT::pUctSingle->starttime = long(clock());
-				if(newgameflag){
-					UCT::pUctSingle->root->clear();
-					delete UCT::pUctSingle->root;
-					UCT::pUctSingle->root = new StateNode(board, top, M, N, whoseNode, x, y, nullptr, nox, noy);
-					UCT::pUctSingle->M = M;
-					UCT::pUctSingle->N = N;
-					if(x == -1 && y == -1)
-						UCT::pUctSingle->depth = 0;
-					else
-						UCT::pUctSingle->depth = 1;
-					UCT::pUctSingle->nox = nox; 
-					UCT::pUctSingle->noy = noy;
-					//UCT::pUctSingle->c = COEFFICIENT;
-					srand(unsigned int(clock()));
-				}else{
-					UCT::pUctSingle->chopBranches(x, y);
-				}
-			}
-			return UCT::pUctSingle;
+					  int M, int N, int whoseNode, 
+					  int x, int y, int nox, int noy, int newgameflag){
+						  if (nullptr == UCT::pUctSingle)
+						  {
+							  //AllocConsole();
+							  UCT::pUctSingle = new UCT(board, top, M, N, whoseNode, x, y, nox, noy);
+							  UCT::pUctSingle->starttime = long(clock());
+
+						  }else{
+							  UCT::pUctSingle->starttime = long(clock());
+							  if(newgameflag || UCT::pUctSingle->root->get_child(y) == nullptr){
+								  UCT::pUctSingle->root->clear();
+								  delete UCT::pUctSingle->root;
+								  UCT::pUctSingle->root = new StateNode(board, top, M, N, whoseNode, x, y, nullptr, nox, noy);
+							  }else{
+								  UCT::pUctSingle->change_root(y);
+							  }
+						  }
+						  if(!newgameflag){
+							  UCT::pUctSingle->c *= DECAY;
+							  if(UCT::pUctSingle->c < MINCOEF){
+								  UCT::pUctSingle->c = MINCOEF;
+							  }
+						  }
+						  //_cprintf("begin\n");
+						  //srand(UCT::pUctSingle->seed);
+						  srand(unsigned int(UCT::pUctSingle->starttime));
+						  //UCT::pUctSingle->seed += 1;
+						  return UCT::pUctSingle;
 }
 
 
@@ -197,290 +399,72 @@ UCT::~UCT(void)
 	delete UCT::pUctSingle;
 }
 
-int UCT::checkNodeState(int**board, int*top, int whoseNode, int x, int y)
-{
-	if(x == -1 && y == -1){
-		return NOTEND;
-	}
-	if ((whoseNode == COMPUTER_NODE && machineWin(x, y, this->M, this->N, board))){
-		return COMPUTER_WIN;
-	}
-	if((whoseNode == HUMAN_NODE && userWin(x, y, this->M, this->N, board))){
-		return HUMAN_WIN;
-	}
-	if((isTie(this->N, top))){
-			return TIE;
-	}
-	return NOTEND;
-}
 
-void UCT::chopBranches(int x, int y){
-	//_cprintf("in chopbranches\n");
-	StateNode* nextroot = this->root->deleteOtherBranches(x, y);
-	
-	if(nextroot != root){
-		delete root;
-	}
-	this->depth += 1;
-	//if(this->depth%2){
-		//this->c *= DECAY;
-	//}
-	//if( this->c < MINCOEF){
-		//this->c = MINCOEF;
-	//}
-	nextroot->parent = nullptr;
-	root = nextroot;
-	//_cprintf("out chopbranches\n");
-}
-
-StateNode* UCT::expand(StateNode* node){
-	//_cprintf("in expand\n");
-	int whoseNode = node->whoseNode;
-	int index = rand() % node->canExpandNUms;
-	int expand_y = node->expandIndex[index];
-	int expand_x = --node->top[expand_y];
-	int nextwhoseNode = HUMAN_NODE;
-	if(whoseNode == COMPUTER_NODE){
-		node->board[expand_x][expand_y] = HUMAN_PUT;
-		nextwhoseNode = HUMAN_NODE;
-	}else{
-		node->board[expand_x][expand_y] = COMPUTER_PUT;
-		nextwhoseNode = COMPUTER_NODE;
-	}
-	if(expand_y == this->noy && (node->top[expand_y] - 1) == this->nox){
-		node->top[expand_y]--;
-	}
-	node->child[expand_y] = new StateNode(node->board,node->top,this->M,this->N,nextwhoseNode,expand_x,expand_y,node,this->nox,this->noy);
-	node->top[expand_y] = expand_x+1;
-	node->board[expand_x][expand_y] = 0;
-	node->expandIndex[index] = node->expandIndex[--node->canExpandNUms];
-	//_cprintf("out expand\n");
-	return node->child[expand_y];
-}
-
-void UCT::getnextPoint(int&x,int&y){
-	StateNode* nextNode = this->search();
-	x = nextNode->x;
-	y = nextNode->y;
-	this->chopBranches(x,y);
-	//_cprintf("son:,time(ms):%ld\n",long(clock())-this->starttime);
-	//for(int i = 0; i < this->N; i++){
-	//	if(this->root->child[i] != nullptr){
-	//		_cprintf("child %d,state:%d profit:%f,count:%ld,%f\n",i,this->root->child[i]->nodestate,this->root->child[i]->profit,this->root->child[i]->visitCount,
-	//			this->root->child[i]->profit/this->root->child[i]->visitCount);
-	//	}
-	//}
-	//_cprintf("\n");
-}
-
-
-StateNode* UCT::search(){
-	int count = 0;
+Point UCT::best_action(){
+	long count = 0;
+	//_cprintf("in_best_action\n");
 	while ((++count % 10 != 0) || long(clock()) - this->starttime <= TIMELIMIT) { //尚未耗尽计算时长 
-		if(root->nodestate != NOTEND){
+		if(root->is_terminal_node()){
 			break;
 		}
 		StateNode *selectedNode = this->TreePolicy(); //运用搜索树策略节点 
-		int deltaProfit = this->DefaultPolicy(selectedNode); //运用模拟策略对选中节点进行一次随机模拟 
-		this->backward(selectedNode, deltaProfit); //将模拟结果回溯反馈给各祖先 
+		double deltaProfit = this->DefaultPolicy(selectedNode); //运用模拟策略对选中节点进行一次随机模拟 
+		selectedNode->backward(deltaProfit); //将模拟结果回溯反馈给各祖先 
 	}
+	Point p = this->root->best_child(0.0)->get_point();
+	//_cprintf("bestchild:x:%d,y:%d\n",p.x,p.y);
+	//_cprintf("you choose %d\n", this->root->get_point().y);
 	//_cprintf("duringsearch,count:%d,time(ms):%ld\n",count,long(clock())-this->starttime);
-	//for(int i = 0; i < this->N; i++){
-	//	if(this->root->child[i] != nullptr){
-	//		_cprintf("child %d,state:%d, profit:%f,count:%ld,%f\n",i,this->root->child[i]->nodestate,this->root->child[i]->profit,this->root->child[i]->visitCount,
-	//			this->root->child[i]->profit/this->root->child[i]->visitCount);
-	//	}
-	//}
+	//this->root->print_profit();
+	//_cprintf("choose %d\n", p.y);
+	//this->root->get_child(p.y)->print_profit();
 	//_cprintf("\n");
-	return this->BestChild(this->root, 0.0);
-}
-
-
-void UCT::backward(StateNode* node, int deltaProfit){
-		while (node) {
-			node->visitCount++; //访问次数+1 
-			node-> profit += deltaProfit; 
-			//deltaProfit = deltaProfit * 0.999;
-			node = node -> parent;
-		}
-
+	//_cprintf("\n");
+	//this->root->dfs();
+	//_cprintf("sub_node_cnt:%d\n",this->root->sub_node_cnt);
+	this->change_root(p.y);
+	return p;
 }
 
 //
 StateNode* UCT::TreePolicy(){
 	//_cprintf("intreepolicy\n");
 	StateNode* currentNode = this->root;
-	while(currentNode->nodestate == NOTEND){  
-		if(currentNode->isExpandable())  
-			return this->expand(currentNode); 
-		else{
-			currentNode = this->BestChild(currentNode, COEFFICIENT);
+	while(!currentNode->is_terminal_node()){  
+		if(currentNode->isExpandable()){
+			currentNode = currentNode->expand();
+			break;
+		}else{
+			currentNode = currentNode->best_child(this->c);
 		}
 	}
 	//_cprintf("outpolicy\n");
 	return currentNode;
 }
-StateNode* UCT::BestChild(StateNode* node, double cofficient){
-	//_cprintf("inbestchild\n");
-		StateNode* best;
-		int flag = 1;
-		if(node->whoseNode == COMPUTER_NODE){
-			flag = -1;
-		}
-		double maxUCBValue = -1e200;
-		int besti = -1;
-		for (int i = 0; i != this->N; i++) {
-			if (node->child[i] == nullptr) continue;
-			long childvisitCnt = node->child[i]->visitCount;
-			double profit = node->child[i]->profit * flag;
-			double ucbvalue = double(profit) / childvisitCnt + 
-				sqrtl(2 * logl(double(node->visitCount)) / childvisitCnt) * cofficient; 
-			if (ucbvalue > maxUCBValue) {
-				maxUCBValue = ucbvalue;
-				best = node->child[i];
-				besti = i;
-			}else if (abs(ucbvalue - maxUCBValue) < 1e-10){
-				//_cprintf("i came here");
-				if(rand()%2){
-					maxUCBValue = ucbvalue;
-					best = node->child[i];
-					besti = i;
-				}
-			}
-		}
-		//_cprintf("outbestchild\n");
-		return best;
-
-}
 
 //模拟下棋，返回胜负
-int UCT::DefaultPolicy(StateNode* node){
-	//_cprintf("indefaultpolicy\n");
-	if(node->nodestate != NOTEND){
-		if(node->parent == nullptr){
-			//_cprintf("outdefaultpolicy0\n");
-			return node->nodestate;
-		}
-		if(node->whoseNode == COMPUTER_NODE){
-			if(node->nodestate == COMPUTER_WIN){
-				node->profit = 1e10;
-				node->parent->nodestate = COMPUTER_WIN;
-				node->parent->profit = 1e10;
-			}else if(node->nodestate == HUMAN_WIN){
-				StateNode* parent = node->parent;
-				int flag = 1;
-				if(parent->canExpandNUms == 0){
-					for( int i = 0; i < this->N; i++){
-						if((parent->child[i]!=nullptr)&&(parent->child[i]->nodestate != HUMAN_WIN)){
-							flag = 0;
-							break;
-						}
-					}
-				}else{
-					flag = 0;
-				}
-				if(flag == 1){
-					//_cprintf("the second,backward\n");
-					node->parent->nodestate = HUMAN_WIN;
-					node->parent->profit = -1e10;
-				}
-			}
-		}else if(node->whoseNode == HUMAN_NODE){
-			if(node->nodestate == HUMAN_WIN){
-				node->profit = -1e10;
-				node->parent->nodestate = HUMAN_WIN;
-				node->parent->profit = -1e10;
-			}else if(node->nodestate == COMPUTER_WIN){
-				StateNode* parent = node->parent;
-				int flag = 1;
-				if(parent->canExpandNUms == 0){
-					for( int i = 0; i < this->N; i++){
-						if((parent->child[i]!=nullptr)&&(parent->child[i]->nodestate != COMPUTER_WIN)){
-							flag = 0;
-							break;
-						}
-					}
-				}else{
-					flag = 0;
-				}
-				if(flag == 1){
-					//_cprintf("the second,backward,computerwin\n");
-					node->parent->nodestate = COMPUTER_WIN;
-					node->parent->profit = 1e10;
-				}
-			}
-		}
-		//_cprintf("outdefaultpolicy1\n");
-		return node->nodestate;
+double UCT::DefaultPolicy(StateNode* node){
+	//_cprintf("in_default_policy\n");
+	if(node->get_node_state() != NOTEND){
+		//_cprintf("check_prune\n");
+		node->get_parent()->check_prune();
+		return node->get_node_state() * node->get_whose_node();
 	}
-	int** _board = new int*[this->M];
-	for(int i = 0; i < this->M; i++){
-		_board[i] = new int[this->N];
-		for(int j = 0; j < this->N; j++){
-			_board[i][j] = node->board[i][j];
-		}
-	}
-	int* _top = new int[this->N];
-	for(int i = 0; i < this->N; i++){
-		_top[i] = node->top[i];
-	}
-	int whoseNode = node->whoseNode;
-	int x = node->x;
-	int y = node->y;
-	int nodestate = node->nodestate;
-	int* availy = new int[this->N];
-	while(nodestate == NOTEND){
-		int availynums = 0;
-		//int earlyendflag = 0;
-		for( int i = 0; i < this->N; i++){
-			if(_top[i] != 0){
-				availy[availynums++] = i;
-			}
-		}
-		//for( int i = 0; i < availynums; i++){
-		//	int nexty = availy[i];
-		//	int nextx = --_top[nexty];
-		//	if(whoseNode == COMPUTER_NODE){
-		//		_board[nextx][nexty] = HUMAN_PUT;
-		//		whoseNode = HUMAN_NODE;
-		//	}else{
-		//		_board[nextx][nexty] = COMPUTER_PUT;
-		//		whoseNode = COMPUTER_NODE;
-		//	}
-		//	if(nexty == this->noy && (_top[nexty] - 1) == this->nox){
-		//		_top[nexty]--;
-		//	}
-		//	nodestate = this->checkNodeState(_board,_top,whoseNode,nextx,nexty);
-		//	if(nodestate != NOTEND){
-		//		earlyendflag = 1;
-		//		break;
-		//	}
-		//	_board[nextx][nexty] = 0;
-		//	_top[nexty] = nextx + 1;
-		//}
-		//if(earlyendflag == 1){
-		//	break;
-		//}
-		int nexty = availy[rand()%availynums];
-		int nextx = --_top[nexty];
-		if(whoseNode == COMPUTER_NODE){
-			_board[nextx][nexty] = HUMAN_PUT;
-			whoseNode = HUMAN_NODE;
-		}else{
-			_board[nextx][nexty] = COMPUTER_PUT;
-			whoseNode = COMPUTER_NODE;
-		}
-		if(nexty == this->noy && (_top[nexty] - 1) == this->nox){
-			_top[nexty]--;
-		}
-		nodestate = this->checkNodeState(_board,_top,whoseNode,nextx,nexty);
-		//nodestate = NOTEND;
-	}
-	for (int i = 0; i < this->M; i++)
-		delete[] _board[i];
-	delete[] _board;
-	delete[] availy;
-	delete[] _top;
-	//_cprintf("outdefaultpolicy2\n");
-	return nodestate;
+	StateNode* sim_node = node->copy();
+	double ret = sim_node->simulate();
+	sim_node->clear();
+	delete sim_node;
+	//_cprintf("out_default_policy\n");
+	return ret * node->get_whose_node();
+}
+
+void UCT::change_root(int y){
+	//_cprintf("in_change_root\n");
+	StateNode* new_root;
+	new_root = this->root->get_child(y);
+	this->root->set_child(y, nullptr);
+	this->root->clear();
+	delete this->root;
+	this->root = new_root;
+	this->root->set_parent(nullptr);
 }
